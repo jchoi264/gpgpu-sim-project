@@ -83,7 +83,8 @@ bool inst_queue::get_wr() {return wr;}
 active_mask_t inst_queue::get_mask() {return active_mask;}
 mem_access_byte_mask_t inst_queue::get_byte_mask() {return byte_mask;}
 
-static queue<inst_queue> InstQueue;
+//static queue<inst_queue> InstQueue;
+static vector<inst_queue> InstQueue;
 
 unsigned mem_access_t::sm_next_access_uid = 0;   
 unsigned warp_inst_t::sm_next_uid = 0;
@@ -228,6 +229,9 @@ void warp_inst_t::broadcast_barrier_reduction(const active_mask_t& access_mask)
         }
     }
 }
+
+// CONFIG_INTER_WARP
+static int batch_skip = 0;
 
 void warp_inst_t::generate_mem_accesses()
 {
@@ -404,7 +408,18 @@ void warp_inst_t::generate_mem_accesses()
     
     // CONFIG_INTER_WARP
     // TODO We also need to think about memory consistency, thus cannot allow ooo execution load and store
-    
+    while(!InstQueue.empty()) {
+        m_accessq.push_back( mem_access_t(
+                    InstQueue.front().get_type(),
+                    InstQueue.front().get_address(),
+                    InstQueue.front().get_size(),
+                    InstQueue.front().get_wr(),
+                    InstQueue.front().get_mask(),
+                    InstQueue.front().get_byte_mask()));
+        InstQueue.pop_back();
+        batch_skip = 0;
+    }
+
     m_mem_accesses_created=true;
 }
 
@@ -599,15 +614,18 @@ void warp_inst_t::memory_coalescing_arch_13_reduce_and_send( bool is_write, mem_
    // CONFIG_INTER_WARP
    // after intra coalescing, this memory instruction is issued to L1 cache
    //m_accessq.push_back( mem_access_t(access_type,addr,size,is_write,info.active,info.bytes) );
-   InstQueue.push(inst_queue(access_type, addr, size, is_write, info.active, info.bytes));
-   m_accessq.push_back( mem_access_t(
-               InstQueue.front().get_type(),
-               InstQueue.front().get_address(),
-               InstQueue.front().get_size(),
-               InstQueue.front().get_wr(),
-               InstQueue.front().get_mask(),
-               InstQueue.front().get_byte_mask()));
-   InstQueue.pop();
+   unsigned int is_found = 0;
+      
+   //printf("queue size %d\n", InstQueue.size());
+   for(int i = 0; i < InstQueue.size(); i++) {
+       if(InstQueue[i].get_address() == addr) {
+           is_found = 1;
+           break;
+       }
+   }
+   if(!is_found) {
+       InstQueue.push_back(inst_queue(access_type, addr, size, is_write, info.active, info.bytes));
+   }
 }
 
 void warp_inst_t::completed( unsigned long long cycle ) const 

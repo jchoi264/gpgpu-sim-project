@@ -51,7 +51,6 @@
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define MIN(a,b) (((a)<(b))?(a):(b))
     
-
 /////////////////////////////////////////////////////////////////////////////
 
 std::list<unsigned> shader_core_ctx::get_regs_written( const inst_t &fvt ) const
@@ -675,7 +674,6 @@ void shader_core_ctx::func_exec_inst( warp_inst_t &inst )
     if( inst.is_load() || inst.is_store() )
         inst.generate_mem_accesses();
     // CONFIG_INTER_WARP
-    //printf("warp_id %d\n", inst.warp_id());
 }
 
 void shader_core_ctx::issue_warp( register_set& pipe_reg_set, const warp_inst_t* next_inst, const active_mask_t &active_mask, unsigned warp_id )
@@ -1383,7 +1381,7 @@ bool ldst_unit::memory_cycle( warp_inst_t &inst, mem_stage_stall_type &stall_rea
        return true;
    if( inst.active_count() == 0 ) 
        return true;
-   assert( !inst.accessq_empty() );
+   //assert( !inst.accessq_empty() );
    mem_stage_stall_type stall_cond = NO_RC_FAIL;
    const mem_access_t &access = inst.accessq_back();
 
