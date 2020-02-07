@@ -35,6 +35,55 @@
 #include "gpgpu-sim/gpu-sim.h"
 #include "option_parser.h"
 #include <algorithm>
+#include <queue>
+
+using namespace std;
+
+// CONFIG_INTER_WARP
+class inst_queue {
+    public:
+        inst_queue(mem_access_type _type,
+                new_addr_type _address,
+                unsigned _size,
+                bool _wr,
+                active_mask_t _active_mask,
+                mem_access_byte_mask_t _byte_mask);
+        mem_access_type get_type();
+        new_addr_type get_address();
+        unsigned get_size();
+        bool get_wr();
+        active_mask_t get_mask();
+        mem_access_byte_mask_t get_byte_mask();
+    private:
+        mem_access_type type;
+        new_addr_type address;
+        unsigned size;
+        bool wr;
+        active_mask_t active_mask;
+        mem_access_byte_mask_t byte_mask;
+};
+
+inst_queue::inst_queue(mem_access_type _type,
+        new_addr_type _address,
+        unsigned _size,
+        bool _wr,
+        active_mask_t _active_mask,
+        mem_access_byte_mask_t _byte_mask) {
+    type = _type;
+    address = _address;
+    size = _size;
+    wr = _wr;
+    active_mask = _active_mask;
+    byte_mask = _byte_mask;
+}
+mem_access_type inst_queue::get_type() {return type;}
+new_addr_type inst_queue::get_address() {return address;}
+unsigned inst_queue::get_size() {return size;}
+bool inst_queue::get_wr() {return wr;}
+active_mask_t inst_queue::get_mask() {return active_mask;}
+mem_access_byte_mask_t inst_queue::get_byte_mask() {return byte_mask;}
+
+static queue<inst_queue> InstQueue;
 
 unsigned mem_access_t::sm_next_access_uid = 0;   
 unsigned warp_inst_t::sm_next_uid = 0;
@@ -355,7 +404,6 @@ void warp_inst_t::generate_mem_accesses()
     
     // CONFIG_INTER_WARP
     // TODO We also need to think about memory consistency, thus cannot allow ooo execution load and store
-    //m_accessq.push_back( mem_access_t(access_type,addr,size,is_write,info.active,info.bytes) );
     
     m_mem_accesses_created=true;
 }
@@ -550,7 +598,16 @@ void warp_inst_t::memory_coalescing_arch_13_reduce_and_send( bool is_write, mem_
    }
    // CONFIG_INTER_WARP
    // after intra coalescing, this memory instruction is issued to L1 cache
-   m_accessq.push_back( mem_access_t(access_type,addr,size,is_write,info.active,info.bytes) );
+   //m_accessq.push_back( mem_access_t(access_type,addr,size,is_write,info.active,info.bytes) );
+   InstQueue.push(inst_queue(access_type, addr, size, is_write, info.active, info.bytes));
+   m_accessq.push_back( mem_access_t(
+               InstQueue.front().get_type(),
+               InstQueue.front().get_address(),
+               InstQueue.front().get_size(),
+               InstQueue.front().get_wr(),
+               InstQueue.front().get_mask(),
+               InstQueue.front().get_byte_mask()));
+   InstQueue.pop();
 }
 
 void warp_inst_t::completed( unsigned long long cycle ) const 
