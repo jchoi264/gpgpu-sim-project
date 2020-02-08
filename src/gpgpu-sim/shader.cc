@@ -801,6 +801,7 @@ void scheduler_unit::order_by_priority( std::vector< T >& result_list,
 
 void scheduler_unit::cycle()
 {
+    // CONFIG_INTER_WARP
     SCHED_DPRINTF( "scheduler_unit::cycle()\n" );
     bool valid_inst = false;  // there was one warp with a valid instruction to issue (didn't require flush due to control hazard)
     bool ready_inst = false;  // of the valid instructions, there was one not waiting for pending register writes
@@ -1372,6 +1373,7 @@ bool ldst_unit::texture_cycle( warp_inst_t &inst, mem_stage_stall_type &rc_fail,
    return inst.accessq_empty(); //done if empty.
 }
 
+// CONFIG_INTER_WARP
 bool ldst_unit::memory_cycle( warp_inst_t &inst, mem_stage_stall_type &stall_reason, mem_stage_access_type &access_type )
 {
    if( inst.empty() || 
