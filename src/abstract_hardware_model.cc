@@ -598,17 +598,7 @@ void warp_inst_t::memory_coalescing_arch_13_reduce_and_send( bool is_write, mem_
    // CONFIG_INTER_WARP
    // after intra coalescing, this memory instruction is issued to L1 cache
    m_accessq.push_back( mem_access_t(access_type,addr,size,is_write,info.active,info.bytes) );
-   unsigned int is_found = 0;
-      
-   for(int i = 0; i < (unsigned int)InstQueue.size(); i++) {
-       if(InstQueue[i].get_address() == addr) {
-           is_found = 1;
-           break;
-       }
-   }
-   if(!is_found) {
-       InstQueue.push_back(inst_queue(access_type, addr, size, is_write, info.active, info.bytes));
-   }
+   //printf("push addr:0x%llx 0x%llx\n", addr, m_accessq.back().get_addr());
 }
 
 void warp_inst_t::completed( unsigned long long cycle ) const 

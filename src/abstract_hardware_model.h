@@ -639,6 +639,9 @@ public:
 
    new_addr_type get_addr() const { return m_addr; }
    void set_addr(new_addr_type addr) {m_addr=addr;}
+   // CONFIG_INTER_WARP
+   void set_wid(unsigned int wid) {mwarp_id=wid;}
+   unsigned int get_wid() {return mwarp_id;}
    unsigned get_size() const { return m_req_size; }
    const active_mask_t &get_warp_mask() const { return m_warp_mask; }
    bool is_write() const { return m_write; }
@@ -677,6 +680,9 @@ private:
    mem_access_type m_type;
    active_mask_t m_warp_mask;
    mem_access_byte_mask_t m_byte_mask;
+
+   //CONFIG_INTER_WARP
+   unsigned int mwarp_id;
 
    static unsigned sm_next_access_uid;
 };
@@ -947,7 +953,8 @@ public:
 
     bool accessq_empty() const { return m_accessq.empty(); }
     unsigned accessq_count() const { return m_accessq.size(); }
-    const mem_access_t &accessq_back() { return m_accessq.back(); }
+    //const mem_access_t &accessq_back() { return m_accessq.back(); }
+    mem_access_t &accessq_back() { return m_accessq.back(); }
     void accessq_pop_back() { m_accessq.pop_back(); }
 
     bool dispatch_delay()

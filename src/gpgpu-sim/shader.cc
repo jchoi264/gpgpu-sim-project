@@ -53,6 +53,17 @@
     
 /////////////////////////////////////////////////////////////////////////////
 
+#include <queue>
+using namespace std;
+// CONFIG_INTER_WARP
+//vector<mem_access_t> AccessQueue;
+//bool accessq_empty() const { return m_accessq.empty(); }
+//unsigned accessq_count() const { return m_accessq.size(); }
+//const mem_access_t &accessq_back() { return m_accessq.back(); }
+//void accessq_pop_back() { m_accessq.pop_back(); }
+std::list<mem_access_t> AccessQueue;
+
+
 std::list<unsigned> shader_core_ctx::get_regs_written( const inst_t &fvt ) const
 {
    std::list<unsigned> result;
@@ -670,10 +681,29 @@ void shader_core_ctx::fetch()
 
 void shader_core_ctx::func_exec_inst( warp_inst_t &inst )
 {
+    unsigned int is_found = 0;
+      
     execute_warp_inst_t(inst);
-    if( inst.is_load() || inst.is_store() )
+    if( inst.is_load() || inst.is_store() ) {
         inst.generate_mem_accesses();
-    // CONFIG_INTER_WARP
+        mem_access_t &access = inst.accessq_back();
+        // CONFIG_INTER_WARP
+        for (std::list<mem_access_t>::iterator it=AccessQueue.begin(); it != AccessQueue.end(); ++it) {
+            if(it->get_addr() == access.get_addr()) {
+                is_found = 1;
+                if(!inst.accessq_empty()) {
+                    //printf("pop queue\n");
+                    inst.accessq_pop_back();
+                }
+                break;
+            }
+        }
+        if(!is_found) {
+            //printf("Global queue, id=%u, addr=0x%llx\n", inst.warp_id(), access.get_addr());
+            access.set_wid((unsigned int)inst.warp_id());
+            AccessQueue.push_back(access);
+        }
+    }
 }
 
 void shader_core_ctx::issue_warp( register_set& pipe_reg_set, const warp_inst_t* next_inst, const active_mask_t &active_mask, unsigned warp_id )
@@ -801,7 +831,6 @@ void scheduler_unit::order_by_priority( std::vector< T >& result_list,
 
 void scheduler_unit::cycle()
 {
-    // CONFIG_INTER_WARP
     SCHED_DPRINTF( "scheduler_unit::cycle()\n" );
     bool valid_inst = false;  // there was one warp with a valid instruction to issue (didn't require flush due to control hazard)
     bool ready_inst = false;  // of the valid instructions, there was one not waiting for pending register writes
@@ -1329,13 +1358,25 @@ ldst_unit::process_cache_access( cache_t* cache,
 mem_stage_stall_type ldst_unit::process_memory_access_queue( cache_t *cache, warp_inst_t &inst )
 {
     mem_stage_stall_type result = NO_RC_FAIL;
+    
     if( inst.accessq_empty() )
         return result;
 
     if( !cache->data_port_free() ) 
         return DATA_PORT_STALL; 
 
+    // CONFIG_INTER_WARP
     //const mem_access_t &access = inst.accessq_back();
+    for (std::list<mem_access_t>::iterator it=AccessQueue.begin(); it != AccessQueue.end(); ++it) {
+        //printf("0x%llx and id:%d, 0x%llx\n", it->get_addr(), inst.warp_id(), inst.accessq_back().get_addr());
+        if(it->get_addr() == inst.accessq_back().get_addr()) {
+            //printf("id:%d, addr:0x%llx addr:0x%llx\n", inst.warp_id(), it->get_addr(), access.get_addr()); 
+            //printf("erase queue:%d\n", it->get_wid());
+            if(inst.warp_id() == it->get_wid())
+                AccessQueue.erase(it);
+            break;
+        }
+    }
     mem_fetch *mf = m_mf_allocator->alloc(inst,inst.accessq_back());
     std::list<cache_event> events;
     enum cache_request_status status = cache->access(mf->get_addr(),mf,gpu_sim_cycle+gpu_tot_sim_cycle,events);
@@ -1400,6 +1441,7 @@ bool ldst_unit::memory_cycle( warp_inst_t &inst, mem_stage_stall_type &stall_rea
        // bypass L1 cache
        unsigned control_size = inst.is_store() ? WRITE_PACKET_SIZE : READ_PACKET_SIZE;
        unsigned size = access.get_size() + control_size;
+       //printf("cache bypass\n");
        if( m_icnt->full(size, inst.is_store() || inst.isatomic()) ) {
            stall_cond = ICNT_RC_FAIL;
        } else {
@@ -1415,6 +1457,7 @@ bool ldst_unit::memory_cycle( warp_inst_t &inst, mem_stage_stall_type &stall_rea
               m_core->inc_store_req( inst.warp_id() );
        }
    } else {
+       //printf("cache process\n");
        assert( CACHE_UNDEFINED != inst.cache_op );
        stall_cond = process_memory_access_queue(m_L1D,inst);
    }
