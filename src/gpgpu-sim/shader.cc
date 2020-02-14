@@ -682,6 +682,7 @@ void shader_core_ctx::fetch()
 void shader_core_ctx::func_exec_inst( warp_inst_t &inst )
 {
     unsigned int is_found = 0;
+    unsigned int warp_bit = 0;
       
     execute_warp_inst_t(inst);
     if( inst.is_load() || inst.is_store() ) {
@@ -692,7 +693,8 @@ void shader_core_ctx::func_exec_inst( warp_inst_t &inst )
             if(it->get_addr() == access.get_addr()) {
                 is_found = 1;
                 if(!inst.accessq_empty()) {
-                    //printf("pop queue\n");
+                    warp_bit = it->get_wid() | inst.warp_id();
+                    it->set_wid(warp_bit);
                     inst.accessq_pop_back();
                 }
                 break;
@@ -700,7 +702,8 @@ void shader_core_ctx::func_exec_inst( warp_inst_t &inst )
         }
         if(!is_found) {
             //printf("Global queue, id=%u, addr=0x%llx\n", inst.warp_id(), access.get_addr());
-            access.set_wid((unsigned int)inst.warp_id());
+            warp_bit |= 1 << inst.warp_id();
+            access.set_wid(warp_bit);
             AccessQueue.push_back(access);
         }
     }
@@ -1366,14 +1369,12 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue( cache_t *cache, war
         return DATA_PORT_STALL; 
 
     // CONFIG_INTER_WARP
-    //const mem_access_t &access = inst.accessq_back();
     for (std::list<mem_access_t>::iterator it=AccessQueue.begin(); it != AccessQueue.end(); ++it) {
-        //printf("0x%llx and id:%d, 0x%llx\n", it->get_addr(), inst.warp_id(), inst.accessq_back().get_addr());
         if(it->get_addr() == inst.accessq_back().get_addr()) {
-            //printf("id:%d, addr:0x%llx addr:0x%llx\n", inst.warp_id(), it->get_addr(), access.get_addr()); 
-            //printf("erase queue:%d\n", it->get_wid());
-            if(inst.warp_id() == it->get_wid())
+            if(it->get_wid() & (1 << inst.warp_id())) {
+                //printf("erase warp group 0x%lx\n", it->get_wid());
                 AccessQueue.erase(it);
+            }
             break;
         }
     }
