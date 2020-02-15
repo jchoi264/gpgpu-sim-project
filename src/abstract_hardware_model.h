@@ -640,8 +640,8 @@ public:
    new_addr_type get_addr() const { return m_addr; }
    void set_addr(new_addr_type addr) {m_addr=addr;}
    // CONFIG_INTER_WARP
-   void set_wid(unsigned int wid) {mwarp_id=wid;}
-   unsigned int get_wid() {return mwarp_id;}
+   void set_wid(int i, unsigned int wid) {m_warp_ids[i] = wid;}
+   unsigned int get_wid(int i) {return m_warp_ids[i];}
    unsigned get_size() const { return m_req_size; }
    const active_mask_t &get_warp_mask() const { return m_warp_mask; }
    bool is_write() const { return m_write; }
@@ -682,7 +682,7 @@ private:
    mem_access_byte_mask_t m_byte_mask;
 
    //CONFIG_INTER_WARP
-   unsigned int mwarp_id;
+   unsigned int m_warp_ids[MAX_MEMORY_ACCESS_SIZE];
 
    static unsigned sm_next_access_uid;
 };

@@ -686,22 +686,46 @@ void shader_core_ctx::func_exec_inst( warp_inst_t &inst )
     execute_warp_inst_t(inst);
     if( inst.is_load() || inst.is_store() ) {
         inst.generate_mem_accesses();
-        mem_access_t &access = inst.accessq_back();
+
         // CONFIG_INTER_WARP
-        for (std::list<mem_access_t>::iterator it=AccessQueue.begin(); it != AccessQueue.end(); ++it) {
-            if(it->get_addr() == access.get_addr()) {
-                is_found = 1;
-                if(!inst.accessq_empty()) {
-                    //printf("pop queue\n");
-                    inst.accessq_pop_back();
+        while (!inst.accessq_empty())
+        {
+            mem_access_t &access = inst.accessq_back();
+
+            for (std::list<mem_access_t>::iterator it = AccessQueue.begin(); it != AccessQueue.end(); ++it)
+            {
+                if (it->get_addr() >= access.get_addr() && access.get_addr() <= it->get_addr() + it->get_size())
+                { // if requested addr is included by exist request
+                    is_found = 1;
+
+                    // insert into global queue
+                    mem_access_byte_mask_t _byte_mask = access.get_byte_mask();
+                    for (int i = 0; i < MAX_MEMORY_ACCESS_SIZE; i++)
+                    {
+                        if (_byte_mask[i] == 1)
+                            it->set_wid(i, inst.warp_id);
+                    }
+                    if (!inst.accessq_empty())
+                    {
+                        //printf("pop queue\n");
+                        inst.accessq_pop_back(); // delete the access from private queue anyway
+                    }
+
+                    break;
                 }
-                break;
             }
-        }
-        if(!is_found) {
-            //printf("Global queue, id=%u, addr=0x%llx\n", inst.warp_id(), access.get_addr());
-            access.set_wid((unsigned int)inst.warp_id());
-            AccessQueue.push_back(access);
+            if (!is_found)
+            { // not able to merge, insert into global queue as a new request
+                //printf("Global queue, id=%u, addr=0x%llx\n", inst.warp_id(), access.get_addr());
+                // access.set_wid((unsigned int)inst.warp_id());
+                mem_access_byte_mask_t _byte_mask = access.get_byte_mask();
+                for (int i = 0; i < MAX_MEMORY_ACCESS_SIZE; i++)
+                {
+                    if (_byte_mask[i] == 1)
+                        access.set_wid(i, inst.warp_id);
+                }
+                AccessQueue.push_back(access);
+            }
         }
     }
 }
@@ -1332,7 +1356,9 @@ ldst_unit::process_cache_access( cache_t* cache,
         m_core->inc_store_req( inst.warp_id() );
     if ( status == HIT ) {
         assert( !read_sent );
-        inst.accessq_pop_back();
+        // CONFIG_INTER_WARP
+        // inst.accessq_pop_back();
+        AccessQueue.erase(0);
         if ( inst.is_load() ) {
             for ( unsigned r=0; r < 4; r++)
                 if (inst.out[r] > 0)
@@ -1348,7 +1374,9 @@ ldst_unit::process_cache_access( cache_t* cache,
     } else {
         assert( status == MISS || status == HIT_RESERVED );
         //inst.clear_active( access.get_warp_mask() ); // threads in mf writeback when mf returns
-        inst.accessq_pop_back();
+        // CONFIG_INTER_WARP
+        // inst.accessq_pop_back();
+        AccessQueue.erase(0);
     }
     if( !inst.accessq_empty() )
         result = BK_CONF;
@@ -1377,7 +1405,8 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue( cache_t *cache, war
             break;
         }
     }
-    mem_fetch *mf = m_mf_allocator->alloc(inst,inst.accessq_back());
+    // mem_fetch *mf = m_mf_allocator->alloc(inst,inst.accessq_back());
+    mem_fetch *mf = m_mf_allocator->alloc(inst,AccessQueue.front());
     std::list<cache_event> events;
     enum cache_request_status status = cache->access(mf->get_addr(),mf,gpu_sim_cycle+gpu_tot_sim_cycle,events);
     return process_cache_access( cache, mf->get_addr(), inst, events, mf, status );
@@ -1426,7 +1455,9 @@ bool ldst_unit::memory_cycle( warp_inst_t &inst, mem_stage_stall_type &stall_rea
        return true;
    //assert( !inst.accessq_empty() );
    mem_stage_stall_type stall_cond = NO_RC_FAIL;
-   const mem_access_t &access = inst.accessq_back();
+   // CONFIG_INTER_WARP
+//    const mem_access_t &access = inst.accessq_back();
+   const mem_access_t &access = AccessQueue.front();
 
    bool bypassL1D = false; 
    if ( CACHE_GLOBAL == inst.cache_op || (m_L1D == NULL) ) {
@@ -1447,7 +1478,9 @@ bool ldst_unit::memory_cycle( warp_inst_t &inst, mem_stage_stall_type &stall_rea
        } else {
            mem_fetch *mf = m_mf_allocator->alloc(inst,access);
            m_icnt->push(mf);
-           inst.accessq_pop_back();
+           // CONFIG_INTER_WARP
+        //    inst.accessq_pop_back();
+            AccessQueue.erase(0);
            //inst.clear_active( access.get_warp_mask() );
            if( inst.is_load() ) { 
               for( unsigned r=0; r < 4; r++) 
