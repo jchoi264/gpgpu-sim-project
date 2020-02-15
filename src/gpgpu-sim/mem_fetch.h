@@ -103,6 +103,7 @@ public:
    enum mem_access_type get_access_type() const { return m_access.get_type(); }
    const active_mask_t& get_access_warp_mask() const { return m_access.get_warp_mask(); }
    mem_access_byte_mask_t get_access_byte_mask() const { return m_access.get_byte_mask(); }
+   unsigned int get_warp_id(int i) const {return m_access.get_wid(i);}
 
    address_type get_pc() const { return m_inst.empty()?-1:m_inst.pc; }
    const warp_inst_t &get_inst() { return m_inst; }

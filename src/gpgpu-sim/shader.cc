@@ -1352,8 +1352,13 @@ ldst_unit::process_cache_access( cache_t* cache,
     mem_stage_stall_type result = NO_RC_FAIL;
     bool write_sent = was_write_sent(events);
     bool read_sent = was_read_sent(events);
+    // CONFIG_INTER_WARP
+    // if( write_sent ) 
+    //     m_core->inc_store_req( inst.warp_id() );
     if( write_sent ) 
-        m_core->inc_store_req( inst.warp_id() );
+        for (int i = 0; i < MAX_MEMORY_ACCESS_SIZE; i++) {
+            m_core->inc_store_req( mf->get_warp_id(i));
+        }
     if ( status == HIT ) {
         assert( !read_sent );
         // CONFIG_INTER_WARP
@@ -1362,7 +1367,9 @@ ldst_unit::process_cache_access( cache_t* cache,
         if ( inst.is_load() ) {
             for ( unsigned r=0; r < 4; r++)
                 if (inst.out[r] > 0)
-                    m_pending_writes[inst.warp_id()][inst.out[r]]--; 
+                    // m_pending_writes[inst.warp_id()][inst.out[r]]--; 
+                    for (int i = 0; i < MAX_MEMORY_ACCESS_SIZE; i++)
+                        m_pending_writes[mf->get_warp_id(i)][inst.out[r]]--;
         }
         if( !write_sent ) 
             delete mf;
@@ -1753,6 +1760,11 @@ void ldst_unit:: issue( register_set &reg_set )
 
 void ldst_unit::writeback()
 {
+
+    // CONFIG_INTER_WARP
+    // for the current warp and current LD/ST instruction
+    // TODO:
+
     // process next instruction that is going to writeback
     if( !m_next_wb.empty() ) {
         if( m_operand_collector->writeback(m_next_wb) ) {
